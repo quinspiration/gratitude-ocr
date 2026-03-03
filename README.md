@@ -1,6 +1,6 @@
-# gratitude_ocr
+# Gratitude OCR
 
-A new Flutter project.
+A Flutter app that converts handwritten gratitude lists into shareable text.
 
 ## Getting Started
 
