@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 void main() {
   runApp(const GratitudeApp());
@@ -21,8 +23,26 @@ class GratitudeApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+
+    if (image != null) {
+      setState(() {
+        _selectedImage = File(image.path);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +50,7 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gratitude'),
+        title: const Text("Gratitude"),
         centerTitle: true,
       ),
       body: Padding(
@@ -39,41 +59,28 @@ class HomeScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${today.month}/${today.day}/${today.year}',
+              "${today.month}/${today.day}/${today.year}",
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 20),
+
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {},
+                onPressed: _pickImage,
                 child: const Padding(
                   padding: EdgeInsets.symmetric(vertical: 14),
-                  child: Text('Scan handwritten list'),
+                  child: Text("Scan handwritten list"),
                 ),
               ),
             ),
-            const SizedBox(height: 30),
-            Text(
-              'Recent Entries',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: ListView.builder(
-                itemCount: 3,
-                itemBuilder: (context, index) {
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text('Placeholder gratitude entry ${index + 1}'),
-                    ),
-                  );
-                },
+
+            const SizedBox(height: 20),
+
+            if (_selectedImage != null)
+              Expanded(
+                child: Image.file(_selectedImage!),
               ),
-            ),
           ],
         ),
       ),
