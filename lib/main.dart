@@ -6,6 +6,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +53,10 @@ class EntryStorage {
   static Future<void> saveEntry(GratitudeEntry entry) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_key) ?? [];
+    raw.removeWhere((e) {
+      final decoded = jsonDecode(e) as Map<String, dynamic>;
+      return decoded['id'] == entry.id;
+    });
     raw.add(jsonEncode(entry.toJson()));
     await prefs.setStringList(_key, raw);
   }
@@ -67,6 +72,18 @@ class EntryStorage {
   }
 }
 
+Rect? _getWidgetBounds(GlobalKey key) {
+  final box = key.currentContext?.findRenderObject() as RenderBox?;
+  if (box == null) return null;
+  final position = box.localToGlobal(Offset.zero);
+  return position & box.size;
+}
+
+const kBar = Color(0xFF6B7C3A);
+const kBg = Color(0xFFF4F6EC);
+const kAccent = Color(0xFF8A9E4A);
+const kLight = Color(0xFFDDE5C0);
+
 class GratitudeApp extends StatelessWidget {
   const GratitudeApp({super.key});
 
@@ -74,12 +91,31 @@ class GratitudeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Gratitude OCR',
+      title: 'Gratitude',
       scrollBehavior: const ScrollBehavior().copyWith(overscroll: false),
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        colorScheme: ColorScheme.fromSeed(seedColor: kBar),
         useMaterial3: true,
-        scaffoldBackgroundColor: Colors.white,
+        scaffoldBackgroundColor: kBg,
+        fontFamily: 'Gill Sans',
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: kBar,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: kBar,
+            side: const BorderSide(color: kBar),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
       ),
       home: const HomeScreen(),
     );
@@ -99,24 +135,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _textController = TextEditingController();
+  final GlobalKey _shareButtonKey = GlobalKey();
 
   Future<void> _pickImage() async {
     final ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
             ListTile(
-              leading: const Icon(Icons.photo_library),
+              leading: const CircleAvatar(
+                backgroundColor: kLight,
+                child: Icon(Icons.photo_library, color: kBar),
+              ),
               title: const Text('Choose from photos'),
               onTap: () => Navigator.pop(context, ImageSource.gallery),
             ),
             ListTile(
-              leading: const Icon(Icons.camera_alt),
+              leading: const CircleAvatar(
+                backgroundColor: kLight,
+                child: Icon(Icons.camera_alt, color: kBar),
+              ),
               title: const Text('Take a photo'),
               onTap: () => Navigator.pop(context, ImageSource.camera),
             ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -128,13 +186,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (image != null) {
       final imageFile = File(image.path);
-
       setState(() {
         _selectedImage = imageFile;
         _textController.clear();
         _isProcessing = true;
       });
-
       await _recognizeText(imageFile);
     }
   }
@@ -212,7 +268,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (pickedDate == null) return;
-
     if (!mounted) return;
 
     final entry = GratitudeEntry(
@@ -222,17 +277,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     await EntryStorage.saveEntry(entry);
-
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Entry saved!')),
+      SnackBar(
+        content: const Text('Entry saved!'),
+        backgroundColor: kBar,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
 
     setState(() {
       _selectedImage = null;
       _textController.clear();
     });
+  }
+
+  void _shareText() {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    final bounds = _getWidgetBounds(_shareButtonKey);
+    Share.share(text,
+        subject: 'My Gratitude List', sharePositionOrigin: bounds);
   }
 
   @override
@@ -248,23 +315,28 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: kBg,
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
+          backgroundColor: kBar,
+          surfaceTintColor: kBar,
           shadowColor: Colors.transparent,
-          title: const Text('Gratitude'),
+          title: const Text(
+            'Gratitude',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ),
+          ),
           centerTitle: true,
           actions: [
             IconButton(
-              icon: const Icon(Icons.list_alt),
+              icon: const Icon(Icons.list_alt, color: Colors.white),
               tooltip: 'Saved entries',
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const EntriesScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const EntriesScreen()),
                 );
               },
             ),
@@ -275,18 +347,25 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: 8),
               Text(
                 '${today.month}/${today.day}/${today.year}',
-                style: Theme.of(context).textTheme.titleMedium,
+                style: const TextStyle(
+                  color: kBar,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
+                child: ElevatedButton.icon(
                   onPressed: _pickImage,
-                  child: const Padding(
+                  icon: const Icon(Icons.document_scanner),
+                  label: const Padding(
                     padding: EdgeInsets.symmetric(vertical: 14),
-                    child: Text('Scan handwritten list'),
+                    child: Text('Scan handwritten list',
+                        style: TextStyle(fontSize: 16)),
                   ),
                 ),
               ),
@@ -294,23 +373,29 @@ class _HomeScreenState extends State<HomeScreen> {
               if (_selectedImage != null)
                 Expanded(
                   child: Container(
-                    color: Colors.white,
+                    color: kBg,
                     child: SingleChildScrollView(
                       physics: const ClampingScrollPhysics(),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Image.file(_selectedImage!),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(_selectedImage!),
+                          ),
                           const SizedBox(height: 20),
                           if (_isProcessing)
-                            const Center(child: CircularProgressIndicator())
+                            const Center(
+                              child: CircularProgressIndicator(color: kBar),
+                            )
                           else ...[
-                            Text(
+                            const Text(
                               'Edit recognized text',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                color: kBar,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                             const SizedBox(height: 8),
                             TextField(
@@ -318,22 +403,50 @@ class _HomeScreenState extends State<HomeScreen> {
                               maxLines: null,
                               keyboardType: TextInputType.multiline,
                               decoration: InputDecoration(
+                                filled: true,
+                                fillColor: Colors.white,
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
                                 ),
-                                hintText: 'Recognized text will appear here...',
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                      color: kAccent, width: 2),
+                                ),
+                                hintText:
+                                    'Recognized text will appear here...',
+                                hintStyle: TextStyle(
+                                    color: Colors.grey.shade400),
                               ),
                             ),
                             const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _saveEntry,
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 14),
-                                  child: Text('Save entry'),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: _saveEntry,
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(
+                                          vertical: 14),
+                                      child: Text('Save entry'),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  key: _shareButtonKey,
+                                  child: OutlinedButton.icon(
+                                    onPressed: _shareText,
+                                    icon: const Icon(Icons.share),
+                                    label: const Padding(
+                                      padding: EdgeInsets.symmetric(
+                                          vertical: 14),
+                                      child: Text('Share'),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ],
@@ -388,28 +501,43 @@ class _EntriesScreenState extends State<EntriesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: kBg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: kBar,
+        surfaceTintColor: kBar,
         shadowColor: Colors.transparent,
-        title: const Text('Saved Entries'),
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text(
+          'Saved Entries',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
+        ),
         centerTitle: true,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: kBar))
           : _entries.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No entries yet.\nScan your first gratitude list!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.eco, size: 64, color: kLight),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No entries yet.\nScan your first gratitude list!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: kBar, fontSize: 16),
+                      ),
+                    ],
                   ),
                 )
               : ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: _entries.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final entry = _entries[index];
                     return Dismissible(
@@ -419,26 +547,265 @@ class _EntriesScreenState extends State<EntriesScreen> {
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
                         decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.red.shade400,
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Icon(Icons.delete, color: Colors.white),
+                        child:
+                            const Icon(Icons.delete, color: Colors.white),
                       ),
                       onDismissed: (_) => _deleteEntry(entry.id),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade200),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _formatDate(entry.date),
-                          style: Theme.of(context).textTheme.bodyMedium,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  EntryDetailScreen(entry: entry),
+                            ),
+                          );
+                          _loadEntries();
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 18),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: kBar.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: const BoxDecoration(
+                                      color: kAccent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    _formatDate(entry.date),
+                                    style: const TextStyle(
+                                      color: kBar,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const Icon(Icons.chevron_right,
+                                  color: kAccent),
+                            ],
+                          ),
                         ),
                       ),
                     );
                   },
                 ),
+    );
+  }
+}
+
+class EntryDetailScreen extends StatefulWidget {
+  final GratitudeEntry entry;
+
+  const EntryDetailScreen({super.key, required this.entry});
+
+  @override
+  State<EntryDetailScreen> createState() => _EntryDetailScreenState();
+}
+
+class _EntryDetailScreenState extends State<EntryDetailScreen> {
+  late TextEditingController _textController;
+  late DateTime _selectedDate;
+  final GlobalKey _shareButtonKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController(text: widget.entry.text);
+    _selectedDate = widget.entry.date;
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _changeDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+
+    final updated = GratitudeEntry(
+      id: widget.entry.id,
+      date: _selectedDate,
+      text: text,
+    );
+
+    await EntryStorage.saveEntry(updated);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Entry updated!'),
+        backgroundColor: kBar,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+
+    Navigator.pop(context);
+  }
+
+  void _shareEntry() {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    final bounds = _getWidgetBounds(_shareButtonKey);
+    Share.share(text,
+        subject: 'My Gratitude List', sharePositionOrigin: bounds);
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.month}/${date.day}/${date.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: kBg,
+        appBar: AppBar(
+          backgroundColor: kBar,
+          surfaceTintColor: kBar,
+          shadowColor: Colors.transparent,
+          iconTheme: const IconThemeData(color: Colors.white),
+          title: const Text(
+            'Entry',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ),
+          ),
+          centerTitle: true,
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _changeDate,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: kLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.edit_calendar,
+                          size: 18, color: kBar),
+                      const SizedBox(width: 8),
+                      Text(
+                        _formatDate(_selectedDate),
+                        style: const TextStyle(
+                          color: kBar,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: TextField(
+                  controller: _textController,
+                  maxLines: null,
+                  expands: true,
+                  keyboardType: TextInputType.multiline,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: kAccent, width: 2),
+                    ),
+                    hintText: 'Edit your gratitude list...',
+                    hintStyle:
+                        TextStyle(color: Colors.grey.shade400),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _saveChanges,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 14),
+                        child: Text('Save changes'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    key: _shareButtonKey,
+                    child: OutlinedButton.icon(
+                      onPressed: _shareEntry,
+                      icon: const Icon(Icons.share),
+                      label: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 14),
+                        child: Text('Share'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
